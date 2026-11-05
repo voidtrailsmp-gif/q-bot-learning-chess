@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Board Master - Intelligent Q-Learning Chess Engine</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .square-light { background-color: var(--light-color, #f0d9b5); }
+        .square-dark { background-color: var(--dark-color, #b58863); }
+        .selected-square { ring: 4px solid #6366f1; ring-inset: inset; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans min-h-screen flex flex-col justify-between">
+
+    <!-- Header -->
+    <header class="bg-slate-900 border-b border-slate-800 p-4">
+        <div class="max-w-6xl mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <span class="text-2xl">♟️</span>
+                <h1 class="text-xl font-bold bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">AI Board Master</h1>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="openModal('ai-memory-modal')" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-xs font-semibold text-white transition flex items-center gap-1">
+                    🧠 <span>AI Memory</span>
+                </button>
+                <button onclick="openModal('settings-modal')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-semibold text-slate-200 transition flex items-center gap-1">
+                    ⚙️ <span>Settings</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-6xl mx-auto p-4 w-full flex-1 grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+        
+        <!-- Board Container -->
+        <div class="md:col-span-2 flex flex-col items-center gap-4">
+            <div id="game-status" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-center text-sm font-semibold text-indigo-400">
+                White's Turn (Player)
+            </div>
+            
+            <div class="w-full max-w-[560px] aspect-square relative bg-slate-900 p-2 rounded-2xl shadow-2xl border border-slate-800">
+                <div id="chess-board" class="w-full h-full grid grid-cols-8 grid-rows-8 rounded-xl overflow-hidden border border-slate-800 relative">
+                    <!-- Dynamic Squares Rendered by JS -->
+                </div>
+            </div>
+            
+            <!-- Controls -->
+            <div class="flex flex-col gap-2 w-full max-w-[560px]">
+                <div class="flex gap-2 w-full">
+                    <button onclick="resetGame()" class="flex-1 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-semibold transition">🔄 New Game</button>
+                    <button onclick="botPlayTurn()" class="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-xs font-semibold transition">🤖 Force Bot Move</button>
+                </div>
+                <!-- Main Visible Bot Speed Slider -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 flex items-center justify-between gap-3">
+                    <div class="flex items-center gap-1.5 min-w-[110px]">
+                        <span class="text-xs">⚡</span>
+                        <span class="text-xs font-medium text-slate-300">Bot Speed:</span>
+                    </div>
+                    <input type="range" id="main-speed-slider" min="0" max="1000" value="100" step="50" oninput="syncSpeedSliders(this.value)" class="flex-1 accent-indigo-500 cursor-pointer">
+                    <span id="main-speed-label" class="text-xs font-mono text-indigo-400 font-semibold w-14 text-right">100ms</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar / Settings & History -->
+        <div class="space-y-4">
+            <!-- Game Mode Selector -->
+            <div class="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
+                <h3 class="text-sm font-semibold text-slate-300">Game Mode</h3>
+                <select id="game-mode" onchange="changeMode()" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option value="pvb">Player (White) vs Q-Bot (Black)</option>
+                    <option value="bvp">Q-Bot (White) vs Player (Black)</option>
+                    <option value="bvb">Q-Bot vs Q-Bot (Auto-Play)</option>
+                    <option value="pvp">Player vs Player</option>
+                </select>
+            </div>
+
+            <!-- Move History -->
+            <div class="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-2 h-[380px] flex flex-col">
+                <h3 class="text-sm font-semibold text-slate-300">Move History</h3>
+                <div id="move-history" class="flex-1 overflow-y-auto space-y-1 text-xs text-slate-400 pr-1">
+                    <!-- History entries -->
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- AI Memory & Training Modal -->
+    <div id="ai-memory-modal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h3 class="font-bold text-slate-200">🧠 AI Memory & Training Simulator</h3>
+                <button onclick="closeModal('ai-memory-modal')" class="text-slate-400 hover:text-slate-200">✕</button>
+            </div>
+            
+            <div class="space-y-4">
+                <div class="grid grid-cols-2 gap-3 text-center">
+                    <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                        <div class="text-xs text-slate-400">White Q-States</div>
+                        <div id="w-state-count" class="text-lg font-bold text-indigo-400">0</div>
+                    </div>
+                    <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                        <div class="text-xs text-slate-400">Black Q-States</div>
+                        <div id="b-state-count" class="text-lg font-bold text-indigo-400">0</div>
+                    </div>
+                </div>
+
+                <!-- Fast Simulator -->
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+                    <h4 class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Fast Background Simulator</h4>
+                    <div class="flex flex-col gap-2">
+                        <div class="flex gap-2">
+                            <select id="sim-target" class="bg-slate-900 border border-slate-800 rounded-xl text-xs px-2 text-slate-200">
+                                <option value="both">Both Bots</option>
+                                <option value="w">White Bot Only</option>
+                                <option value="b">Black Bot Only</option>
+                            </select>
+                            <input type="number" id="sim-count" value="50" min="1" max="5000" class="w-20 bg-slate-900 border border-slate-800 rounded-xl px-2 py-1.5 text-xs text-slate-200 text-center">
+                            <button onclick="startFastSimulation()" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold py-1.5 transition">Start Training</button>
+                        </div>
+                        <div class="flex items-center gap-2 pt-1">
+                            <span class="text-[10px] text-slate-400">Delay per move:</span>
+                            <input type="range" id="sim-speed-slider" min="0" max="1000" value="100" step="50" oninput="syncSpeedSliders(this.value)" class="flex-1 accent-indigo-500">
+                            <span id="speed-label" class="text-[10px] text-indigo-400 font-mono w-14 text-right">100ms</span>
+                        </div>
+                    </div>
+                    <div id="sim-progress-bar" class="w-full bg-slate-900 rounded-full h-2 overflow-hidden hidden">
+                        <div id="sim-progress-fill" class="bg-indigo-500 h-full w-0 transition-all duration-100"></div>
+                    </div>
+                </div>
+
+                <!-- Export / Import -->
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="exportQTable('w')" class="py-2 bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 font-semibold rounded-xl">Export White Data</button>
+                    <button onclick="exportQTable('b')" class="py-2 bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 font-semibold rounded-xl">Export Black Data</button>
+                    <label class="py-2 bg-indigo-900/40 hover:bg-indigo-900/60 border border-indigo-700 text-xs text-indigo-200 font-semibold rounded-xl text-center cursor-pointer">
+                        Import White JSON
+                        <input type="file" accept=".json" onchange="importQTable(event, 'w')" class="hidden">
+                    </label>
+                    <label class="py-2 bg-indigo-900/40 hover:bg-indigo-900/60 border border-indigo-700 text-xs text-indigo-200 font-semibold rounded-xl text-center cursor-pointer">
+                        Import Black JSON
+                        <input type="file" accept=".json" onchange="importQTable(event, 'b')" class="hidden">
+                    </label>
+                </div>
+
+                <!-- Reset AI Memory Section -->
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+                    <h4 class="text-xs font-semibold text-rose-400">🗑️ Reset AI Memory</h4>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button onclick="resetQTable('w')" class="py-1.5 bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800 text-rose-200 text-[11px] font-semibold rounded-lg transition">Reset White</button>
+                        <button onclick="resetQTable('b')" class="py-1.5 bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800 text-rose-200 text-[11px] font-semibold rounded-lg transition">Reset Black</button>
+                        <button onclick="resetQTable('both')" class="py-1.5 bg-rose-800 hover:bg-rose-700 text-white text-[11px] font-semibold rounded-lg transition">Reset Both</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] flex flex-col">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h3 class="font-bold text-slate-200">⚙️ Board & Theme Settings</h3>
+                <button onclick="closeModal('settings-modal')" class="text-slate-400 hover:text-slate-200">✕</button>
+            </div>
+            
+            <div class="space-y-4 overflow-y-auto flex-1 pr-1">
+                <!-- Tab Customization -->
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+                    <h4 class="text-xs font-semibold text-slate-300">Tab Title & Icon</h4>
+                    <div class="flex gap-2">
+                        <input type="text" id="tab-title-input" placeholder="Custom Tab Title" onchange="updateTabTitle()" class="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] text-slate-400 mb-1">Favicon Image:</label>
+                        <input type="file" accept="image/*" onchange="uploadFavicon(event)" class="w-full text-xs text-slate-400 file:mr-2 file:py-1 file:px-3 file:rounded-xl file:border-0 file:text-xs file:bg-slate-800 file:text-slate-200 cursor-pointer">
+                    </div>
+                </div>
+
+                <!-- Colors -->
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+                    <h4 class="text-xs font-semibold text-slate-300">Board Colors</h4>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs text-slate-400">Light Squares:</span>
+                            <input type="color" id="picker-light" value="#f0d9b5" onchange="updateColors()" class="w-8 h-8 rounded border-0 cursor-pointer bg-transparent">
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs text-slate-400">Dark Squares:</span>
+                            <input type="color" id="picker-dark" value="#b58863" onchange="updateColors()" class="w-8 h-8 rounded border-0 cursor-pointer bg-transparent">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Custom Piece Textures -->
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+                    <div class="flex justify-between items-center">
+                        <h4 class="text-xs font-semibold text-slate-300">Custom Piece Textures</h4>
+                        <button onclick="resetCustomPieceImages()" class="text-[10px] text-rose-400 hover:underline">Reset Textures</button>
+                    </div>
+                    <div id="piece-texture-inputs" class="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+                        <!-- Dynamic texture upload inputs -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script Engine -->
+    <script>
+        const svgPieces = {
+            'wP': '<svg viewBox="0 0 45 45" class="w-full h-full drop-shadow"><path d="M 22.5 9 A 4 4 0 1 1 22.5 17 A 4 4 0 1 1 22.5 9 Z M 24 18 C 24 18 28 22 28 28 L 17 28 C 17 22 21 18 21 18 Z M 14 31 L 31 31 L 31 34 L 14 34 Z" fill="#ffffff" stroke="#1e293b" stroke-width="1.5"/></svg>',
+            'wR': '<svg viewBox="0 0 45 45" class="w-full h-full drop-shadow"><path d="M 9 34 L 36 34 L 36 31 L 9 31 Z M 12 31 L 14 20 L 31 20 L 33 31 Z M 11 14 L 11 19 L 16 19 L 16 16 L 21 16 L 21 19 L 24 19 L 24 16 L 29 16 L 29 19 L 34 19 L 34 14 Z" fill="#ffffff" stroke="#1e293b" stroke-width="1.5"/></svg>',
+            'wN': '<svg viewBox="0 0 45 45" class="w-full h-full drop-shadow"><path d="M 22 10 C 22 10 13 14 13 22 C 13 25 15 28 17 30 L 10 34 L 35 34 L 33 27 C 33 27 28 26 28 20 C 28 15 22 10 22 10 Z" fill="#ffffff" stroke="#1e293b" stroke-width="1.5"/></svg>',
+            'wB': '<svg viewBox="0 0 45 45" class="w-full h-full drop-shadow"><path d="M 22.5 8 A 3 3 0 1 1 22.5 14 A 3 3 0 1 1 22.5 8 Z M 14 34 L 31 34 L 29 30 C 29 23 27 15 22.5 15 C 18 15 16 23 16 30 Z" fill="#ffffff" stroke="#1e293b" stroke-width="1.5"/></svg>',
+            'wQ': '<svg viewBox="0 0 45 45" class="w-full h-full drop-shadow"><path d="M 9 26 L 11 34 L 34 34 L 36 26 L 31 18 L 22.5 24 L 14 18 Z M 9 16 A 2 2 0 1 1 9 20 A 2 2 0 1 1 9 16 Z M 36 16 A 2 2 0 1 1 36 20 A 2 2 0 1 1 36 16 Z M 22.5 10 A 2 2 0 1 1 22.5 14 A 2 2 0 1 1 22.5 10 Z" fill="#ffffff" stroke="#1e293b" stroke-width="1.5"/></svg>',
+            'wK': '<svg viewBox="0 0 45 45" class="w-full h-full drop-shadow"><path d="M 21 6 L 24 6 L 24 9 L 27 9 L 27 12 L 24 12 L 24 15 L 21 15 L 21 12 L 18 12 L 18 9 L 21 9 Z M 12 34 L 33 34 L 31 22 L 22.5 18 L 14 22 Z" fill="#ffffff" stroke="#1e293b" stroke-width="1.5"/></svg>',
+            'bP': '<svg viewBox="0 0 45 45" class="w-full h-full drop-shadow"><path d="M 22.5 9 A 4 4 0 1 1 22.5 17 A 4 4 0 1 1 22.5 9 Z M 24 18 C 24 18 28 22 28 28 L 17 28 C 17 22 21 18 21 18 Z M 14 31 L 31 31 L 31 34 L 14 34 Z" fill="#334155" stroke="#020617" stroke-width="1.5"/></svg>',
+            'bR': '<svg viewBox="0 0 45 45" class="w-full h-full drop-shadow"><path d="M 9 34 L 36 34 L 36 31 L 9 31 Z M 12 31 L 14 20 L 31 20 L 33 31 Z M 11 14 L 11 19 L 16 19 L 16 16 L 21 16 L 21 19 L 24 19 L 24 16 L 29 16 L 29 19 L 34 19 L 34 14 Z" fill="#334155" stroke="#020617" stroke-width="1.5"/></svg>',
+            'bN': '<svg viewBox="0 0 45 45" class="w-full h-full drop-shadow"><path d="M 22 10 C 22 10 13 14 13 22 C 13 25 15 28 17 30 L 10 34 L 35 34 L 33 27 C 33 27 28 26 28 20 C 28 15 22 10 22 10 Z" fill="#334155" stroke="#020617" stroke-width="1.5"/></svg>',
+            'bB': '<svg viewBox="0 0 45 45" class="w-full h-full drop-shadow"><path d="M 22.5 8 A 3 3 0 1 1 22.5 14 A 3 3 0 1 1 22.5 8 Z M 14 34 L 31 34 L 29 30 C 29 23 27 15 22.5 15 C 18 15 16 23 16 30 Z" fill="#334155" stroke="#020617" stroke-width="1.5"/></svg>',
+            'bQ': '<svg viewBox="0 0 45 45" class="w-full h-full drop-shadow"><path d="M 9 26 L 11 34 L 34 34 L 36 26 L 31 18 L 22.5 24 L 14 18 Z M 9 16 A 2 2 0 1 1 9 20 A 2 2 0 1 1 9 16 Z M 36 16 A 2 2 0 1 1 36 20 A 2 2 0 1 1 36 16 Z M 22.5 10 A 2 2 0 1 1 22.5 14 A 2 2 0 1 1 22.5 10 Z" fill="#334155" stroke="#020617" stroke-width="1.5"/></svg>',
+            'bK': '<svg viewBox="0 0 45 45" class="w-full h-full drop-shadow"><path d="M 21 6 L 24 6 L 24 9 L 27 9 L 27 12 L 24 12 L 24 15 L 21 15 L 21 12 L 18 12 L 18 9 L 21 9 Z M 12 34 L 33 34 L 31 22 L 22.5 18 L 14 22 Z" fill="#334155" stroke="#020617" stroke-width="1.5"/></svg>'
+        };
+
+        const pieceIcons = {
+            'wP': 'White Pawn', 'wR': 'White Rook', 'wN': 'White Knight', 'wB': 'White Bishop', 'wQ': 'White Queen', 'wK': 'White King',
+            'bP': 'Black Pawn', 'bR': 'Black Rook', 'bN': 'Black Knight', 'bB': 'Black Bishop', 'bQ': 'Black Queen', 'bK': 'Black King'
+        };
+
+        let customPieceImages = JSON.parse(localStorage.getItem('customPieceImages') || '{}');
+        let boardState = [];
+        let currentTurn = 'w';
+        let selectedSquare = null;
+        let validTargets = [];
+        let QTableW = JSON.parse(localStorage.getItem('QTableW') || '{}');
+        let QTableB = JSON.parse(localStorage.getItem('QTableB') || '{}');
+        let boardColors = { light: '#f0d9b5', dark: '#b58863' };
+
+        // Game State Trackers
+        let halfMoveClock = 0; // For 50-move rule
+        let positionHistory = []; // For 3-fold repetition
+        let gameOver = false;
+
+        const initialBoard = [
+            'bR','bN','bB','bQ','bK','bB','bN','bR',
+            'bP','bP','bP','bP','bP','bP','bP','bP',
+            null,null,null,null,null,null,null,null,
+            null,null,null,null,null,null,null,null,
+            null,null,null,null,null,null,null,null,
+            null,null,null,null,null,null,null,null,
+            'wP','wP','wP','wP','wP','wP','wP','wP',
+            'wR','wN','wB','wQ','wK','wB','wN','wR'
+        ];
+
+        function initBoardState() {
+            boardState = [...initialBoard];
+            currentTurn = 'w';
+            selectedSquare = null;
+            validTargets = [];
+            halfMoveClock = 0;
+            positionHistory = [boardState.join(',')];
+            gameOver = false;
+            renderBoard();
+            updateGameStatus("White's Turn (Player)");
+            updateStateCountDisplay();
+        }
+
+        // Add missing renderBoard function
+        function renderBoard() {
+            const boardEl = document.getElementById('chess-board');
+            if (!boardEl) return;
+            boardEl.innerHTML = '';
+
+            for (let i = 0; i < 64; i++) {
+                const row = Math.floor(i / 8);
+                const col = i % 8;
+                const isLight = (row + col) % 2 === 0;
+
+                const sq = document.createElement('div');
+                sq.className = `relative flex items-center justify-center cursor-pointer select-none transition-colors duration-150 ${
+                    isLight ? 'square-light' : 'square-dark'
+                } ${selectedSquare === i ? 'selected-square' : ''}`;
+
+                sq.style.backgroundColor = isLight ? boardColors.light : boardColors.dark;
+                sq.onclick = () => handleSquareClick(i);
+
+                // Target Highlight Indicator
+                if (validTargets.includes(i)) {
+                    const dotWrapper = document.createElement('div');
+                    dotWrapper.className = 'absolute inset-0 flex items-center justify-center pointer-events-none z-20';
+                    const dot = document.createElement('div');
+                    const isCapture = boardState[i] !== null;
+                    dot.className = isCapture
+                        ? 'w-6 h-6 rounded-full border-4 border-rose-500/80 bg-rose-500/30 animate-pulse'
+                        : 'w-4 h-4 rounded-full bg-emerald-500/80 shadow-lg shadow-emerald-500/50';
+                    dotWrapper.appendChild(dot);
+                    sq.appendChild(dotWrapper);
+                }
+
+                // Render Piece
+                const piece = boardState[i];
+                if (piece) {
+                    const pieceContainer = document.createElement('div');
+                    pieceContainer.className = 'w-4/5 h-4/5 pointer-events-none relative z-10 flex items-center justify-center';
+
+                    if (customPieceImages[piece]) {
+                        const img = document.createElement('img');
+                        img.src = customPieceImages[piece];
+                        img.alt = pieceIcons[piece] || piece;
+                        img.className = 'w-full h-full object-contain drop-shadow';
+                        pieceContainer.appendChild(img);
+                    } else if (svgPieces[piece]) {
+                        pieceContainer.innerHTML = svgPieces[piece];
+                    }
+                    sq.appendChild(pieceContainer);
+                }
+
+                boardEl.appendChild(sq);
+            }
+        }
+
+        function updateGameStatus(msg, isAlert = false) {
+            const statusEl = document.getElementById('game-status');
+            statusEl.innerText = msg;
+            if (isAlert) {
+                statusEl.className = "w-full bg-rose-950/80 border border-rose-700 rounded-xl p-3 text-center text-sm font-bold text-rose-300 animate-pulse";
+            } else {
+                statusEl.className = "w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-center text-sm font-semibold text-indigo-400";
+            }
+        }
+
+        function handleSquareClick(idx) {
+            if (gameOver) return;
+
+            const piece = boardState[idx];
+            const pieceColor = piece ? piece[0] : null;
+
+            if (selectedSquare !== null && validTargets.includes(idx)) {
+                makeMove(selectedSquare, idx);
+                selectedSquare = null;
+                validTargets = [];
+                renderBoard();
+                if (!gameOver) checkBotTurn();
+                return;
+            }
+
+            if (pieceColor === currentTurn) {
+                selectedSquare = idx;
+                validTargets = calculateSimpleTargets(idx);
+            } else {
+                selectedSquare = null;
+                validTargets = [];
+            }
+            renderBoard();
+        }
+
+        function calculateSimpleTargets(fromIdx) {
+            // Generates legal moves and filters out any move that leaves own King in check
+            const candidateMoves = getStrictLegalMoves(boardState, fromIdx);
+            const legalMoves = [];
+
+            candidateMoves.forEach(targetIdx => {
+                const tempBoard = [...boardState];
+                tempBoard[targetIdx] = tempBoard[fromIdx];
+                tempBoard[fromIdx] = null;
+
+                if (!isKingInCheck(tempBoard, currentTurn)) {
+                    legalMoves.push(targetIdx);
+                }
+            });
+
+            return legalMoves;
+        }
+
+        // --- King Check & Position Evaluation ---
+        function findKingSquare(board, color) {
+            const kingPiece = color + 'K';
+            for (let i = 0; i < 64; i++) {
+                if (board[i] === kingPiece) return i;
+            }
+            return -1;
+        }
+
+        function isKingInCheck(board, color) {
+            const kingSquare = findKingSquare(board, color);
+            if (kingSquare === -1) return false;
+
+            const enemyColor = color === 'w' ? 'b' : 'w';
+            for (let i = 0; i < 64; i++) {
+                if (board[i] && board[i][0] === enemyColor) {
+                    const enemyAttacks = getStrictLegalMoves(board, i, true);
+                    if (enemyAttacks.includes(kingSquare)) return true;
+                }
+            }
+            return false;
+        }
+
+        function hasAnyLegalMoves(board, color) {
+            for (let i = 0; i < 64; i++) {
+                if (board[i] && board[i][0] === color) {
+                    const moves = getStrictLegalMoves(board, i);
+                    for (let target of moves) {
+                        const tempBoard = [...board];
+                        tempBoard[target] = tempBoard[i];
+                        tempBoard[i] = null;
+                        if (!isKingInCheck(tempBoard, color)) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        // --- Insufficient Material Check ---
+        function isInsufficientMaterial(board) {
+            const activePieces = board.filter(p => p !== null);
+            if (activePieces.length <= 2) return true; // King vs King
+
+            if (activePieces.length === 3) {
+                // King + Knight vs King OR King + Bishop vs King
+                const nonKings = activePieces.filter(p => p[1] !== 'K');
+                if (nonKings.length === 1 && (nonKings[0][1] === 'N' || nonKings[0][1] === 'B')) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // --- Strict Chess Movement System ---
+        function getStrictLegalMoves(board, fromIdx, isAttackingCheck = false) {
+            const piece = board[fromIdx];
+            if (!piece) return [];
+
+            const color = piece[0];
+            const type = piece[1];
+            const r = Math.floor(fromIdx / 8);
+            const c = fromIdx % 8;
+            const targets = [];
+
+            const addTargetIfValid = (nr, nc) => {
+                if (nr < 0 || nr > 7 || nc < 0 || nc > 7) return false;
+                const targetIdx = nr * 8 + nc;
+                const dest = board[targetIdx];
+
+                if (!dest) {
+                    targets.push(targetIdx);
+                    return true;
+                }
+                if (dest[0] !== color) {
+                    targets.push(targetIdx);
+                }
+                return false;
+            };
+
+            if (type === 'P') {
+                const dir = color === 'w' ? -1 : 1;
+                const startRow = color === 'w' ? 6 : 1;
+
+                if (!isAttackingCheck) {
+                    const f1R = r + dir;
+                    if (f1R >= 0 && f1R <= 7 && !board[f1R * 8 + c]) {
+                        targets.push(f1R * 8 + c);
+                        const f2R = r + dir * 2;
+                        if (r === startRow && !board[f2R * 8 + c]) {
+                            targets.push(f2R * 8 + c);
+                        }
+                    }
+                }
+
+                // Diagonal captures
+                [c - 1, c + 1].forEach(nc => {
+                    const f1R = r + dir;
+                    if (nc >= 0 && nc <= 7 && f1R >= 0 && f1R <= 7) {
+                        const targetIdx = f1R * 8 + nc;
+                        const dest = board[targetIdx];
+                        if (isAttackingCheck || (dest && dest[0] !== color)) {
+                            targets.push(targetIdx);
+                        }
+                    }
+                });
+            } else if (type === 'N') {
+                const knightOffsets = [
+                    [-2, -1], [-2, 1], [-1, -2], [-1, 2],
+                    [1, -2],  [1, 2],  [2, -1],  [2, 1]
+                ];
+                knightOffsets.forEach(([dr, dc]) => addTargetIfValid(r + dr, c + dc));
+            } else if (type === 'K') {
+                const kingOffsets = [
+                    [-1, -1], [-1, 0], [-1, 1],
+                    [0, -1],           [0, 1],
+                    [1, -1],  [1, 0],  [1, 1]
+                ];
+                kingOffsets.forEach(([dr, dc]) => addTargetIfValid(r + dr, c + dc));
+            } else {
+                const dirs = [];
+                if (type === 'R' || type === 'Q') dirs.push([-1, 0], [1, 0], [0, -1], [0, 1]);
+                if (type === 'B' || type === 'Q') dirs.push([-1, -1], [-1, 1], [1, -1], [1, 1]);
+
+                dirs.forEach(([dr, dc]) => {
+                    let nr = r + dr;
+                    let nc = c + dc;
+                    while (addTargetIfValid(nr, nc)) {
+                        nr += dr;
+                        nc += dc;
+                    }
+                });
+            }
+
+            return targets;
+        }
+
+        function makeMove(from, to) {
+            if (gameOver) return;
+
+            const piece = boardState[from];
+            const targetPiece = boardState[to];
+
+            // 50-move rule tracker reset on capture or pawn move
+            if (piece[1] === 'P' || targetPiece) {
+                halfMoveClock = 0;
+            } else {
+                halfMoveClock++;
+            }
+
+            // Pawn Promotion
+            if (piece[1] === 'P') {
+                const toRow = Math.floor(to / 8);
+                if ((piece[0] === 'w' && toRow === 0) || (piece[0] === 'b' && toRow === 7)) {
+                    boardState[to] = piece[0] + 'Q';
+                } else {
+                    boardState[to] = piece;
+                }
+            } else {
+                boardState[to] = piece;
+            }
+            boardState[from] = null;
+
+            // Track position frequency for 3-fold repetition
+            const boardKey = boardState.join(',');
+            positionHistory.push(boardKey);
+            const isThreefold = positionHistory.filter(k => k === boardKey).length >= 3;
+
+            // Switch turn
+            const nextTurn = currentTurn === 'w' ? 'b' : 'w';
+            const inCheck = isKingInCheck(boardState, nextTurn);
+            const hasMoves = hasAnyLegalMoves(boardState, nextTurn);
+            const insufficient = isInsufficientMaterial(boardState);
+
+            // Q-Table learning entry with enhanced rewards
+            const table = currentTurn === 'w' ? QTableW : QTableB;
+            const moveKey = `${from}->${to}`;
+            let reward = targetPiece ? 5.0 : 0.1;
+            if (!hasMoves && inCheck) reward = 100.0; // Checkmate bonus
+            else if (inCheck) reward = 15.0; // Check bonus
+            
+            if (!table[boardKey]) table[boardKey] = {};
+            table[boardKey][moveKey] = (table[boardKey][moveKey] || 0) + 0.2 * (reward - (table[boardKey][moveKey] || 0));
+
+            // Persist
+            if (currentTurn === 'w') localStorage.setItem('QTableW', JSON.stringify(QTableW));
+            else localStorage.setItem('QTableB', JSON.stringify(QTableB));
+
+            currentTurn = nextTurn;
+
+            // Status & Game-Over Evaluation
+            let moveTag = '';
+            if (!hasMoves && inCheck) {
+                gameOver = true;
+                moveTag = ' ♚ CHECKMATE!';
+                updateGameStatus(`GAME OVER: ${currentTurn === 'w' ? "Black" : "White"} Wins by Checkmate!`, true);
+            } else if (!hasMoves && !inCheck) {
+                gameOver = true;
+                moveTag = ' 🤝 STALEMATE!';
+                updateGameStatus(`DRAW: Stalemate! No legal moves remaining.`, true);
+            } else if (insufficient) {
+                gameOver = true;
+                moveTag = ' ⚖️ DRAW!';
+                updateGameStatus(`DRAW: Insufficient Material!`, true);
+            } else if (halfMoveClock >= 100) {
+                gameOver = true;
+                moveTag = ' ⏳ DRAW!';
+                updateGameStatus(`DRAW: 50-Move Rule Reached!`, true);
+            } else if (isThreefold) {
+                gameOver = true;
+                moveTag = ' 🔄 DRAW!';
+                updateGameStatus(`DRAW: 3-Fold Repetition!`, true);
+            } else if (inCheck) {
+                moveTag = ' ⚠️ CHECK!';
+                updateGameStatus(`${currentTurn === 'w' ? "White's" : "Black's"} Turn (IN CHECK!)`, true);
+            } else {
+                updateGameStatus(`${currentTurn === 'w' ? "White's" : "Black's"} Turn`);
+            }
+
+            // Log entry
+            const history = document.getElementById('move-history');
+            history.innerHTML = `<div class="py-0.5 border-b border-slate-800 flex justify-between"><span>${currentTurn === 'b' ? 'W' : 'B'}: ${from} → ${to} ${targetPiece ? '⚔️' : ''}</span><span class="font-bold text-amber-400">${moveTag}</span></div>` + history.innerHTML;
+
+            updateStateCountDisplay();
+        }
+
+        function checkBotTurn() {
+            if (gameOver) return;
+            const mode = document.getElementById('game-mode').value;
+            const delay = getSimDelay();
+            if ((mode === 'pvb' && currentTurn === 'b') || (mode === 'bvp' && currentTurn === 'w') || mode === 'bvb') {
+                setTimeout(botPlayTurn, delay);
+            }
+        }
+
+        function getSimDelay() {
+            const slider = document.getElementById('main-speed-slider') || document.getElementById('sim-speed-slider');
+            return slider ? parseInt(slider.value) : 100;
+        }
+
+        function syncSpeedSliders(val) {
+            const delay = parseInt(val);
+            const mainSlider = document.getElementById('main-speed-slider');
+            const mainLabel = document.getElementById('main-speed-label');
+            const modalSlider = document.getElementById('sim-speed-slider');
+            const modalLabel = document.getElementById('speed-label');
+
+            if (mainSlider) mainSlider.value = delay;
+            if (mainLabel) mainLabel.innerText = delay === 0 ? 'Instant' : delay + 'ms';
+            if (modalSlider) modalSlider.value = delay;
+            if (modalLabel) modalLabel.innerText = delay === 0 ? 'Instant' : delay + 'ms';
+        }
+
+        function botPlayTurn() {
+            if (gameOver) return;
+
+            const botMoves = [];
+            for (let i = 0; i < 64; i++) {
+                if (boardState[i] && boardState[i][0] === currentTurn) {
+                    const targets = calculateSimpleTargets(i);
+                    targets.forEach(t => botMoves.push({ from: i, to: t }));
+                }
+            }
+
+            if (botMoves.length === 0) return;
+
+            // Q-Table checkmate prioritization or epsilon-greedy selection
+            let selected = null;
+            
+            // Check for immediate checkmate move
+            for (let m of botMoves) {
+                const tempBoard = [...boardState];
+                tempBoard[m.to] = tempBoard[m.from];
+                tempBoard[m.from] = null;
+                const opponentColor = currentTurn === 'w' ? 'b' : 'w';
+                if (isKingInCheck(tempBoard, opponentColor) && !hasAnyLegalMoves(tempBoard, opponentColor)) {
+                    selected = m;
+                    break;
+                }
+            }
+
+            if (!selected) {
+                const table = currentTurn === 'w' ? QTableW : QTableB;
+                const stateKey = boardState.join(',');
+                if (Math.random() > 0.2 && table[stateKey]) {
+                    let bestScore = -Infinity;
+                    for (let m of botMoves) {
+                        const moveKey = `${m.from}->${m.to}`;
+                        const score = table[stateKey][moveKey] || 0;
+                        if (score > bestScore) {
+                            bestScore = score;
+                            selected = m;
+                        }
+                    }
+                }
+            }
+
+            if (!selected) {
+                selected = botMoves[Math.floor(Math.random() * botMoves.length)];
+            }
+
+            makeMove(selected.from, selected.to);
+            renderBoard();
+            
+            const mode = document.getElementById('game-mode').value;
+            const delay = getSimDelay();
+            if (mode === 'bvb' && !gameOver) setTimeout(botPlayTurn, delay);
+        }
+
+        function startFastSimulation() {
+            const count = parseInt(document.getElementById('sim-count').value) || 50;
+            const bar = document.getElementById('sim-progress-bar');
+            const fill = document.getElementById('sim-progress-fill');
+
+            bar.classList.remove('hidden');
+            let completed = 0;
+
+            function runBatch() {
+                const step = Math.min(20, count - completed);
+                const delay = getSimDelay();
+
+                for (let i = 0; i < step; i++) {
+                    initBoardState();
+                    let moves = 0;
+                    while (!gameOver && moves < 80) {
+                        botPlayTurn();
+                        moves++;
+                    }
+                }
+                completed += step;
+                fill.style.width = `${(completed / count) * 100}%`;
+
+                if (completed < count) {
+                    setTimeout(runBatch, delay);
+                } else {
+                    setTimeout(() => bar.classList.add('hidden'), 1000);
+                    updateStateCountDisplay();
+                }
+            }
+            runBatch();
+        }
+
+        function updateStateCountDisplay() {
+            document.getElementById('w-state-count').innerText = Object.keys(QTableW).length;
+            document.getElementById('b-state-count').innerText = Object.keys(QTableB).length;
+        }
+
+        function exportQTable(bot) {
+            const data = bot === 'w' ? QTableW : QTableB;
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `q_table_${bot}.json`;
+            a.click();
+        }
+
+        function importQTable(evt, bot) {
+            const file = evt.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const parsed = JSON.parse(e.target.result);
+                if (bot === 'w') { QTableW = parsed; localStorage.setItem('QTableW', JSON.stringify(QTableW)); }
+                else { QTableB = parsed; localStorage.setItem('QTableB', JSON.stringify(QTableB)); }
+                updateStateCountDisplay();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function resetQTable(bot) {
+            if (bot === 'w' || bot === 'both') {
+                QTableW = {};
+                localStorage.removeItem('QTableW');
+            }
+            if (bot === 'b' || bot === 'both') {
+                QTableB = {};
+                localStorage.removeItem('QTableB');
+            }
+            updateStateCountDisplay();
+            updateGameStatus(bot === 'both' ? "AI Memory Reset for Both Bots!" : `AI Memory Reset for ${bot === 'w' ? 'White' : 'Black'} Bot!`);
+        }
+
+        function openModal(id) {
+            const el = document.getElementById(id);
+            if (el) el.classList.remove('hidden');
+        }
+        function closeModal(id) {
+            const el = document.getElementById(id);
+            if (el) el.classList.add('hidden');
+        }
+        function resetGame() { initBoardState(); }
+        function changeMode() { checkBotTurn(); }
+
+        function uploadFavicon(evt) {
+            const file = evt.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                let link = document.querySelector("link[rel*='icon']") || document.createElement('link');
+                link.rel = 'shortcut icon';
+                link.href = e.target.result;
+                document.getElementsByTagName('head')[0].appendChild(link);
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function updateTabTitle() {
+            const title = document.getElementById('tab-title-input').value;
+            if (title) document.title = title;
+        }
+
+        function updateColors() {
+            boardColors.light = document.getElementById('picker-light').value;
+            boardColors.dark = document.getElementById('picker-dark').value;
+            renderBoard();
+        }
+
+        function setupTextureInputs() {
+            const container = document.getElementById('piece-texture-inputs');
+            if (!container) return;
+            container.innerHTML = '';
+
+            Object.keys(pieceIcons).forEach(pKey => {
+                const item = document.createElement('div');
+                item.className = 'bg-slate-900 p-2 rounded-lg border border-slate-800 space-y-1';
+                
+                const hasCustom = !!customPieceImages[pKey];
+                item.innerHTML = `
+                    <div class="flex justify-between items-center text-[10px] text-slate-300">
+                        <span>${pieceIcons[pKey]}</span>
+                        ${hasCustom ? '<span class="text-emerald-400">Custom</span>' : '<span class="text-slate-500">Default</span>'}
+                    </div>
+                    <input type="file" accept="image/*" onchange="uploadPieceTexture(event, '${pKey}')" class="w-full text-[10px] text-slate-400 file:mr-2 file:py-0.5 file:px-2 file:rounded file:border-0 file:text-[10px] file:bg-slate-800 file:text-slate-200 cursor-pointer">
+                `;
+                container.appendChild(item);
+            });
+        }
+
+        function uploadPieceTexture(evt, pieceKey) {
+            const file = evt.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                customPieceImages[pieceKey] = e.target.result;
+                localStorage.setItem('customPieceImages', JSON.stringify(customPieceImages));
+                setupTextureInputs();
+                renderBoard();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function resetCustomPieceImages() {
+            customPieceImages = {};
+            localStorage.removeItem('customPieceImages');
+            setupTextureInputs();
+            renderBoard();
+        }
+
+        window.onload = function() {
+            initBoardState();
+            setupTextureInputs();
+        };
+    </script>
+</body>
+</html>
